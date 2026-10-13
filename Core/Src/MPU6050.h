@@ -14,11 +14,14 @@
 #define MPU6050_GYRO_CONFIG_BASE 0x1B
 #define MPU6050_ACCEL_CONFIG_BASE 0x1C
 // Measurement registers
-#define MPU6050_XOUT_BASE 0x3B
-#define MPU6050_YOUT_BASE 0x3D
-#define MPU6050_ZOUT_BASE 0x3F
+#define MPU6050_ACCEL_MEASUREMENT_BASE 0x3B
+#define MPU6050_GYRO_MEASUREMENT_BASE 0x43
 // Default timeout
 #define MPU6050_TIMEOUT 1000
+// INT16_MAX / 2g = 16384 LSB/g
+#define MPU6050_ACCEL_LSB_SENSITIVITY 16384.0f
+// INT16_MAX / 250 approx 131 LSB/deg/s
+#define MPU6050_GYRO_LSB_SENSITIVITY 131.0f
 
 #define MPU6050_ADDR(handle) ((MPU6050_BASE_ADDRESS | (handle).address_lsb) << 1)
 
@@ -30,17 +33,15 @@ typedef struct {
 bool MPU6050_init(MPU6050_Handle handle); 
 
 typedef struct {
-    uint16_t x, y, z;
-} MPU6050_Raw;
-bool MPU6050_read_u16(MPU6050_Handle handle, uint16_t reg_base, uint16_t* res) ; 
-bool MPU6050_read_raw(MPU6050_Handle handle, MPU6050_Raw* result); 
-void MPU6050_print_raw(MPU6050_Raw data); 
+    float x, y, z;
+} MPU6050_Measurements;
 
+// Measures axial acceleration in g 
+bool MPU6050_read_accelerometer(MPU6050_Handle handle, MPU6050_Measurements* result); 
+// Measures rotation rate against IMU's axes in deg/s
+bool MPU6050_read_gyro(MPU6050_Handle handle, MPU6050_Measurements* result);
 
 bool MPU6050_write_byte(MPU6050_Handle handle, uint16_t reg, uint8_t byte); 
-
-
-
 
 #ifdef MPU6050_IMPL
 
@@ -69,31 +70,47 @@ bool MPU6050_init(MPU6050_Handle handle) {
     return true; 
 }
 
-bool MPU6050_read_u16(MPU6050_Handle handle, uint16_t reg_base, uint16_t* res)  {
-    return HAL_I2C_Mem_Read(handle.i2c, MPU6050_ADDR(handle), reg_base, 1, (uint8_t*)res, 2, MPU6050_TIMEOUT) == HAL_OK;
-}
+bool MPU6050_read_accelerometer(MPU6050_Handle handle, MPU6050_Measurements* result) {
+    uint8_t data[6] = {0};
+    if (!HAL_I2C_Mem_Read(handle.i2c, MPU6050_ADDR(handle), MPU6050_ACCEL_MEASUREMENT_BASE, 1, data, 6, MPU6050_TIMEOUT) == HAL_OK)
+        return false;
 
-bool MPU6050_read_raw(MPU6050_Handle handle, MPU6050_Raw* result) {
-    if (!MPU6050_read_u16(handle, MPU6050_XOUT_BASE, &result->x)) return false; 
-    if (!MPU6050_read_u16(handle, MPU6050_YOUT_BASE, &result->y)) return false;
-    if (!MPU6050_read_u16(handle, MPU6050_ZOUT_BASE, &result->z)) return false;
+    // convert big endian to little endian
+
+    int16_t raw_x = ((data[0] << 8) | data[1]);
+    int16_t raw_y = ((data[2] << 8) | data[3]);
+    int16_t raw_z = ((data[4] << 8) | data[5]);
+
+    *result = (MPU6050_Measurements) {
+        .x = raw_x / MPU6050_ACCEL_LSB_SENSITIVITY,
+        .y = raw_y / MPU6050_ACCEL_LSB_SENSITIVITY,
+        .z = raw_z / MPU6050_ACCEL_LSB_SENSITIVITY,
+    };
+
+    return true;
+}
+bool MPU6050_read_gyro(MPU6050_Handle handle, MPU6050_Measurements* result) {
+    uint8_t data[6] = {0};
+    if (!HAL_I2C_Mem_Read(handle.i2c, MPU6050_ADDR(handle), MPU6050_GYRO_MEASUREMENT_BASE, 1, data, 6, MPU6050_TIMEOUT) == HAL_OK)
+        return false;
+
+    // convert big endian to little endian
+
+    int16_t raw_x = ((data[0] << 8) | data[1]);
+    int16_t raw_y = ((data[2] << 8) | data[3]);
+    int16_t raw_z = ((data[4] << 8) | data[5]);
+
+    *result = (MPU6050_Measurements) {
+        .x = raw_x / MPU6050_GYRO_LSB_SENSITIVITY,
+        .y = raw_y / MPU6050_GYRO_LSB_SENSITIVITY,
+        .z = raw_z / MPU6050_GYRO_LSB_SENSITIVITY,
+    };
+
     return true;
 }
 
 bool MPU6050_write_byte(MPU6050_Handle handle, uint16_t reg, uint8_t byte) {
     return HAL_I2C_Mem_Write(handle.i2c, MPU6050_ADDR(handle), reg, 1, &byte, 1, MPU6050_TIMEOUT) == HAL_OK;
-}
-
-
-void MPU6050_print_raw(MPU6050_Raw data) {
-    printf(
-        "Measurements = {\r\n"
-        "  x = %u,\r\n"
-        "  y = %u,\r\n"
-        "  z = %u.\r\n"
-        "}\r\n",
-        data.x, data.y, data.z
-    );
 }
 
 

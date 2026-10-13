@@ -36,6 +36,22 @@ void I2C1_Init(I2C_HandleTypeDef* handle) {
     }; 
 }
 
+
+void MPU6050_print(MPU6050_Measurements data) {
+    printf(
+        "Accelerometer = {\r\n"
+        "  x = %fg,\r\n"
+        "  y = %fg,\r\n"
+        "  z = %fg.\r\n"
+        "}\r\n",
+
+        /* "x: %f, y: %f, z: %f\r\n", */
+        /* "%f, %f, %f\r\n", */
+        data.x, data.y, data.z
+    );
+}
+
+
 int main(void)
 {
     HAL_Init();
@@ -88,6 +104,7 @@ int main(void)
         panic("Could not initialize I2C1\r\n");
     }
     HAL_I2CEx_ConfigAnalogFilter(&i2c1, I2C_ANALOGFILTER_ENABLE);
+
     // MPU6050 Init
     MPU6050_Handle handle = {
         .i2c = &i2c1,
@@ -99,18 +116,27 @@ int main(void)
 
     BSP_LED_Init(LED_GREEN);
     BSP_PB_Init(BUTTON_USER, BUTTON_MODE_EXTI);
+    MPU6050_Measurements gyroscope;
+    MPU6050_Measurements accelerometer;
+    bool output_data = false; 
     while (1)
     {
         if (button_pressed) {
             button_pressed = false;
             BSP_LED_Toggle(LED_GREEN);
-            HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_10);
-
-
-            MPU6050_Raw raw; 
-            if (!MPU6050_read_raw(handle, &raw)) panic("Could not read MPU6050 measurements.\r\n");
-            MPU6050_print_raw(raw);
+            output_data = !output_data;
+            
+            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, output_data ? GPIO_PIN_SET : GPIO_PIN_RESET);
         }
+        if (output_data) {
+            if (!MPU6050_read_gyro(handle, &gyroscope)) panic("Could not read MPU6050 gyro measurements.\r\n");
+            if (!MPU6050_read_accelerometer(handle, &accelerometer)) panic("Could not read MPU6050 accelerometer measurements.\r\n");
+            // Output comma-separated motion data to UART2 (st-link uart-to-usb)
+            printf("%f, %f, %f, %f, %f, %f\r\n",
+                   accelerometer.x, accelerometer.y, accelerometer.z,
+                   gyroscope.x, gyroscope.y, gyroscope.z);
+        }
+        /* MPU6050_print(accel); */
     }
 }
 
@@ -185,6 +211,13 @@ static void MX_USART2_UART_Init(UART_HandleTypeDef* huart)
     huart->Init.WordLength = UART_WORDLENGTH_8B;
     huart->Init.StopBits = UART_STOPBITS_1;
     huart->Init.Parity = UART_PARITY_NONE;
+
+    // Experiment with other configuration
+    /* huart->Init.BaudRate = 230400; */
+    /* huart->Init.WordLength = UART_WORDLENGTH_9B; */
+    /* huart->Init.StopBits = UART_STOPBITS_1; */
+    /* huart->Init.Parity = UART_PARITY_EVEN; */
+
     huart->Init.Mode = UART_MODE_TX_RX;
     huart->Init.HwFlowCtl = UART_HWCONTROL_NONE;
     huart->Init.OverSampling = UART_OVERSAMPLING_16;
@@ -220,19 +253,19 @@ static void MX_USART2_UART_Init(UART_HandleTypeDef* huart)
   */
 static void MX_GPIO_Init(void)
 {
-  /* USER CODE BEGIN MX_GPIO_Init_1 */
+    /* USER CODE BEGIN MX_GPIO_Init_1 */
 
-  /* USER CODE END MX_GPIO_Init_1 */
+    /* USER CODE END MX_GPIO_Init_1 */
 
-  /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOC_CLK_ENABLE();
-  __HAL_RCC_GPIOF_CLK_ENABLE();
-  __HAL_RCC_GPIOA_CLK_ENABLE();
-  __HAL_RCC_GPIOB_CLK_ENABLE();
+    /* GPIO Ports Clock Enable */
+    __HAL_RCC_GPIOC_CLK_ENABLE();
+    __HAL_RCC_GPIOF_CLK_ENABLE();
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    __HAL_RCC_GPIOB_CLK_ENABLE();
 
-  /* USER CODE BEGIN MX_GPIO_Init_2 */
+    /* USER CODE BEGIN MX_GPIO_Init_2 */
 
-  /* USER CODE END MX_GPIO_Init_2 */
+    /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
@@ -245,13 +278,13 @@ static void MX_GPIO_Init(void)
   */
 void Error_Handler(void)
 {
-  /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
-  __disable_irq();
-  while (1)
-  {
-  }
-  /* USER CODE END Error_Handler_Debug */
+    /* USER CODE BEGIN Error_Handler_Debug */
+    /* User can add his own implementation to report the HAL error return state */
+    __disable_irq();
+    while (1)
+    {
+    }
+    /* USER CODE END Error_Handler_Debug */
 }
 
 void panic(const char* msg) {
@@ -269,11 +302,11 @@ void panic(const char* msg) {
   */
 void assert_failed(uint8_t *file, uint32_t line)
 {
-  /* USER CODE BEGIN 6 */
-  /* User can add his own implementation to report the file name and line number,
-     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
-  /* USER CODE END 6 */
-  printf("%s:%d: ASSERTION FAILED");
-  Error_Handler();
+    /* USER CODE BEGIN 6 */
+    /* User can add his own implementation to report the file name and line number,
+       ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+    /* USER CODE END 6 */
+    printf("%s:%d: ASSERTION FAILED");
+    Error_Handler();
 }
 #endif /* USE_FULL_ASSERT */
